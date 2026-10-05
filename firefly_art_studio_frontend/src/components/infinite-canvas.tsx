@@ -1,25 +1,20 @@
 import type Konva from "konva";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { Layer, Stage, Image, Transformer, Shape } from "react-konva";
 import useImage from "use-image";
 import type { InfiniteCanvasContextMenu } from "./infinit-canvas-context-menu";
 import InfiniteCanvasContextMenuComponent from "./infinit-canvas-context-menu";
+import type { CanvasImageData } from "@/pages/ProjectView";
 
-type CanvasImageData = {
-  id: string;
-  src: string;
-  x: number;
-  y: number;
-  width?: number | null;
-  height?: number | null;
-  rotation?: number;
-};
 type InfiniteCanvasProps = {
-  images?: CanvasImageData[];
+  images: Record<string, CanvasImageData>;
+  stageRef: RefObject<Konva.Stage | null>;
+  updateCanvasObj: (id: string, type: "create"|"change", data: CanvasImageData) => void;
 };
 
 type CanvasImage = {
     data: CanvasImageData
+    id: string
     isSelected: boolean
     onSelect: ()=>void
     onChange: (newAttrs: CanvasImageData) => void
@@ -29,6 +24,7 @@ type CanvasImage = {
 const CanvasImage = ({
     data,
     isSelected,
+    id,
     onSelect,
     onChange,
     onContextMenu,
@@ -66,7 +62,7 @@ const CanvasImage = ({
 
                 x={data.x}
                 y={data.y}
-                id={data.id}
+                id={id}
                 rotation={data.rotation}
                 draggable
 
@@ -88,7 +84,7 @@ const CanvasImage = ({
                         stage.container().getBoundingClientRect();
 
                     onContextMenu(
-                        data.id,
+                        id,
                         containerRect.left + pointerPosition.x + 4,
                         containerRect.top + pointerPosition.y + 4
                     );
@@ -160,13 +156,12 @@ const CanvasImage = ({
 };
 
 
-
 export default function InfiniteCanvas({
-    images = [],
+    images,
+    stageRef,
+    updateCanvasObj
 }:InfiniteCanvasProps){
 
-    const canvsObjRef = useRef(images);
-    const [canvasObj, setCanvasObj] = useState<CanvasImageData[]>(images) 
     const [selectedObj, setSelectedObj] = useState<string | null>(null);
 
     const [contextMenu, setContextMenu] = useState<InfiniteCanvasContextMenu>({
@@ -178,79 +173,16 @@ export default function InfiniteCanvas({
     
     const childRef = useRef<HTMLDivElement>(null);
     const [childDimenstion, setChildDimenstion] = useState<{width: number, height: number}>({width: 0, height: 0});
-    const stageRef = useRef<Konva.Stage>(null);
     
-    const [scale, setScale] = useState(1);
     
     const [isPanning, setIsPanning] = useState(false);
-    
-    const history = useRef([images]);
-    const historyStep = useRef(0);
-    const [isHistoryChanging, setIsHistoryChanging] = useState(false);
-    useEffect(() => {
-        setCanvasObj((current) => {
-            const currentIds = new Set(current.map((item) => item.id));
-
-            const newImages = images.filter(
-                (item) => !currentIds.has(item.id)
-            );
-
-            return [...current, ...newImages];
-        });
-    }, [images]);
-    useEffect(() => {
-        const previous = canvsObjRef.current;
-        if(!isHistoryChanging){
-            history.current = history.current.slice(0, historyStep.current + 1);
-    
-            history.current = [...history.current, canvasObj];
-            historyStep.current += 1;
-        }
-        else {
-            setIsHistoryChanging(false);
-        }
-
-        const changed = canvasObj.filter((current) => {
-            const old = previous.find(
-                (item) => item.id === current.id
-            );
-
-            // New item
-            if (!old) {
-                return true;
-            }
-
-            return (
-                old.x !== current.x ||
-                old.y !== current.y ||
-                old.width !== current.width ||
-                old.height !== current.height ||
-                old.rotation !== current.rotation
-            );
-        });
-
-        // Nothing changed
-        if (changed.length === 0) {
-            return;
-        }
-
-
-        const timer = setTimeout(() => {
-            canvsObjRef.current = canvasObj;
-        }, 5000);
-
-        return () => {
-            clearTimeout(timer);
-        };
-    }, [canvasObj]);
-
-
 
     const MIN_SCALE = 0.05;
     const MAX_SCALE = 5;
     const ZOOM_FACTOR = 1.05;
 
-    useEffect(() => {
+    useEffect(() => {        
+
         const updateDimensions = () => {
             const parent = childRef.current?.parentElement;
 
@@ -266,14 +198,14 @@ export default function InfiniteCanvas({
             // Ctrl + Shift + Z → Redo
             if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "z") {
                 e.preventDefault();
-                handleRedo();
+                // handleRedo();
                 return;
             }
 
             // Ctrl + Z → Undo
             if (e.ctrlKey && e.key.toLowerCase() === "z") {
                 e.preventDefault();
-                handleUndo();
+                // handleUndo();
             }
         };
 
@@ -327,7 +259,6 @@ export default function InfiniteCanvas({
             y: pointer.y - mousePointTo.y * clampedScale,
         };
 
-        setScale(clampedScale);
 
         stage.scale({
             x: clampedScale,
@@ -377,26 +308,6 @@ export default function InfiniteCanvas({
         }
     };
 
-    const handleUndo = () => {
-        if (historyStep.current === 0) {
-        return;
-        }
-        historyStep.current -= 1;
-        const previous = history.current[historyStep.current];
-        setIsHistoryChanging(true)
-        setCanvasObj(previous);
-    };
-
-    const handleRedo = () => {
-        if (historyStep.current === history.current.length - 1) {
-        return;
-        }
-        historyStep.current += 1;
-        const next = history.current[historyStep.current];
-        setIsHistoryChanging(true)
-        setCanvasObj(next);
-    };
-
     const handleContextMenu = (
         id: string,
         x: number,
@@ -425,29 +336,26 @@ export default function InfiniteCanvas({
             }}
             >
             <Layer>
-                {canvasObj.map((obj, i)=>{
-                    return(
-                        <CanvasImage
-                            isSelected={selectedObj === obj.id}
-                            onSelect={()=>{
-                                setSelectedObj(obj.id);
+                {Object.entries(images).map(([id, obj]) => {
+                    return (
+                        obj.active && <CanvasImage
+                            isSelected={selectedObj === id}
+                            onSelect={() => {
+                                setSelectedObj(id);
                             }}
-                            data={obj} 
-                            key={i}
-                            onChange={(newAttrs: CanvasImageData)=>{
-                                const objs = canvasObj.slice();
-                                objs[i] = newAttrs;
-                                setCanvasObj(objs);
+                            data={obj}
+                            key={id}
+                            id={id}
+                            onChange={(newAttrs: CanvasImageData) => {
+                                updateCanvasObj(id,"change", newAttrs);
                             }}
                             onContextMenu={handleContextMenu}
                         />
-                    )
+                    );
                 })}
             </Layer>
         </Stage>
 
-        {contextMenu.show && (
-            <InfiniteCanvasContextMenuComponent contextMenu={contextMenu} setContextMenu={setContextMenu}/ >    
-        )}
+        {contextMenu.show && <InfiniteCanvasContextMenuComponent contextMenu={contextMenu} setContextMenu={setContextMenu}/ >    }
     </div>
 }
