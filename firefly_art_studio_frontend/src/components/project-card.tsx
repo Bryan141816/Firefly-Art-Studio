@@ -16,11 +16,13 @@ import {
 
 import { IconFolderCode } from "@tabler/icons-react";
 import type { Project } from "@/types/Project";
+import { useNavigate } from "react-router-dom";
 
 function ProjectCard({ project,onDeleteProject }: { project: Project, onDeleteProject: (id:string)=>void }) {
+  const navigate = useNavigate();
   const openProject = () => {
-    console.log("Opening:", project.id);
-    // navigate(`/projects/${project.id}`)
+    
+    navigate(`/project/${project.id}`)
   };
   const handleDelete = () => {
     onDeleteProject(project.id);

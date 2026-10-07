@@ -9,11 +9,11 @@ import { SiteHeader } from "./site-header"
 import type { User } from "@/types/User"
 
 
-export default function AppLayout({user}:{user: User}) {
+export default function AppLayout({user}:{user: User | null}) {
   const currentUser = {
-    name: user.name,
-    email: user.email,
-    avatar: user.picture
+    name: user?.name,
+    email: user?.email,
+    avatar: user?.picture
   } 
   return (
     <SidebarProvider

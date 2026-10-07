@@ -7,9 +7,10 @@ export type InfiniteCanvasContextMenu = {
 type InfiniteCanvasContextMenuComponent = {
     contextMenu: InfiniteCanvasContextMenu;
     setContextMenu: React.Dispatch<React.SetStateAction<InfiniteCanvasContextMenu>>;
+    onDelete: (id: string) => void;
 };
 
-export default function InfiniteCanvasContextMenuComponent({contextMenu, setContextMenu}:InfiniteCanvasContextMenuComponent){
+export default function InfiniteCanvasContextMenuComponent({contextMenu, setContextMenu, onDelete}:InfiniteCanvasContextMenuComponent){
     return (
         <div
                 className="
@@ -87,7 +88,13 @@ export default function InfiniteCanvasContextMenuComponent({contextMenu, setCont
                         hover:text-destructive
                     "
                     onClick={() => {
-                        console.log("Delete:", contextMenu.id);
+                        if(contextMenu.id){
+                            onDelete(contextMenu.id)
+                            setContextMenu((prev) => ({
+                                ...prev,
+                                show: false,
+                            }));
+                        }
                     }}
                 >
                     Delete

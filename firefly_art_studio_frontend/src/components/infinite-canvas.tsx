@@ -356,6 +356,15 @@ export default function InfiniteCanvas({
             </Layer>
         </Stage>
 
-        {contextMenu.show && <InfiniteCanvasContextMenuComponent contextMenu={contextMenu} setContextMenu={setContextMenu}/ >    }
+        {contextMenu.show && <InfiniteCanvasContextMenuComponent 
+            contextMenu={contextMenu} 
+            setContextMenu={setContextMenu} 
+            onDelete={
+                (id:string)=>{
+                    updateCanvasObj(id, "change", {...images[id], active: false})
+                }
+            }
+            />    
+        }
     </div>
 }

@@ -1,19 +1,18 @@
-import {
-  EllipsisVertical,
-  LogOut,
-} from "lucide-react"
+import { EllipsisVertical, LogOut } from "lucide-react"
 
 import {
   Avatar,
   AvatarFallback,
   AvatarImage,
 } from "@/components/ui/avatar"
+
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+
 import {
   SidebarMenu,
   SidebarMenuButton,
@@ -21,18 +20,20 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar"
 
+import { Skeleton } from "@/components/ui/skeleton"
+
 export function NavUser({
   user,
 }: {
-  user: {
-    name: string
-    email: string
-    avatar: string
+  user?: {
+    name?: string
+    email?: string
+    avatar?: string
   }
 }) {
   const { isMobile } = useSidebar()
 
-  async function onLogOutClick (){
+  async function onLogOutClick() {
     await fetch("http://localhost:8080/logout", {
       method: "POST",
       credentials: "include",
@@ -41,6 +42,28 @@ export function NavUser({
     window.location.href = "/login"
   }
 
+  if (!user) {
+    return (
+      <SidebarMenu>
+        <SidebarMenuItem>
+          <SidebarMenuButton size="lg">
+            <Skeleton className="h-8 w-8 rounded-lg" />
+
+            <div className="grid flex-1 gap-1">
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="h-3 w-32" />
+            </div>
+
+            <Skeleton className="ml-auto h-4 w-4" />
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      </SidebarMenu>
+    )
+  }
+
+  const name = user.name ?? ""
+  const email = user.email ?? ""
+  const avatar = user.avatar ?? ""
 
   return (
     <SidebarMenu>
@@ -55,19 +78,19 @@ export function NavUser({
             }
           >
             <Avatar className="h-8 w-8 rounded-lg">
-              <AvatarImage src={user.avatar} alt={user.name} />
+              <AvatarImage src={avatar} alt={name} />
               <AvatarFallback className="rounded-lg">
-                {user.name.charAt(0).toUpperCase()}
+                {name.charAt(0).toUpperCase()}
               </AvatarFallback>
             </Avatar>
 
             <div className="grid flex-1 text-left text-sm leading-tight">
               <span className="truncate font-medium">
-                {user.name}
+                {name}
               </span>
 
               <span className="truncate text-xs text-muted-foreground">
-                {user.email}
+                {email}
               </span>
             </div>
 
@@ -82,23 +105,22 @@ export function NavUser({
           >
             <div className="flex items-center gap-2 px-2 py-2">
               <Avatar className="h-8 w-8 rounded-lg">
-                <AvatarImage src={user.avatar} alt={user.name} />
+                <AvatarImage src={avatar} alt={name} />
                 <AvatarFallback className="rounded-lg">
-                  {user.name.charAt(0).toUpperCase()}
+                  {name.charAt(0).toUpperCase()}
                 </AvatarFallback>
               </Avatar>
 
               <div className="grid flex-1 text-left text-sm leading-tight">
                 <span className="truncate font-medium">
-                  {user.name}
+                  {name}
                 </span>
 
                 <span className="truncate text-xs text-muted-foreground">
-                  {user.email}
+                  {email}
                 </span>
               </div>
             </div>
-
 
             <DropdownMenuItem onClick={onLogOutClick}>
               <LogOut />

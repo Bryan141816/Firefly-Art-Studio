@@ -1,17 +1,30 @@
 import InfiniteCanvas from "@/components/infinite-canvas";
 import type Konva from "konva";
 import { useEffect, useRef, useState } from "react";
+import { useParams } from "react-router-dom";
 
 export type CanvasImageData = {
   assetId?: string | null;
   src: string;
   x: number;
   y: number;
-  width?: number | null;
-  height?: number | null;
-  rotation?: number;
-  active: boolean ; 
+  width: number | null;
+  height: number | null;
+  rotation: number | 0;
+  active: boolean;
 };
+
+type CloudUploadData = {
+  canvasId: string
+  src: string
+  x: number
+  y: number
+  width: number | null
+  height: number | null
+  rotation: number,
+  active: boolean,
+  id: string
+}
 
 type Position = {
   x: number,
@@ -25,16 +38,217 @@ type DeltaSystem = {
   newData: CanvasImageData | null;
 }
 
+type UploadQueueData = {
+  id: string
+  file: File
+  data: CanvasImageData
+}
+
+type ProjectResponse = {
+  project_metadata: {
+    id: string;
+    name: string;
+    untitledNo: number;
+    description: string | null;
+  };
+  items: Record<string, CanvasImageData>;
+};
+
 export default function ProjectView() {
-  
+
   const [images, setImages] = useState<Record<string, CanvasImageData>>({});
-  
+
   const containerRef = useRef<HTMLDivElement>(null);
 
   const stageRef = useRef<Konva.Stage>(null);
 
   const undoStack = useRef<DeltaSystem[]>([])
   const redoStack = useRef<DeltaSystem[]>([])
+
+  const uploadQueue = useRef<UploadQueueData[]>([]);
+  const uploadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const updateQueue = useRef<DeltaSystem[]>([]);
+  const updateTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const { projectId } = useParams<{ projectId: string }>();
+
+  const addUploadQueue = (id: string, file: File, data: CanvasImageData) => {
+    uploadQueue.current.push({
+      id,
+      file,
+      data
+    });
+
+    if (uploadTimer.current) {
+      clearTimeout(uploadTimer.current);
+    }
+
+    uploadTimer.current = setTimeout(() => {
+      uploadFiles();
+    }, 5000);
+  };
+
+  const uploadFiles = async () => {
+    const queue = uploadQueue.current;
+    if (queue.length === 0 || !projectId) return;
+
+    uploadQueue.current = [];
+    uploadTimer.current = null;
+
+    const data = queue.map((item) => {
+      return {
+        canvasId: item.id,
+        x: item.data.x,
+        y: item.data.y,
+        width: item.data.width ?? null,
+        height: item.data.height ?? null,
+        rotation: item.data.rotation ?? 0,
+        active: item.data.active,
+      };
+    });
+
+    const formData = new FormData();
+
+    formData.append(
+      "data",
+      new Blob(
+        [JSON.stringify(data)],
+        { type: "application/json" }
+      )
+    );
+
+    queue.forEach((item) => {
+      formData.append("files", item.file);
+    });
+
+    try {
+      const response = await fetch(
+        `http://localhost:8080/api/project/${projectId}/item/`,
+        {
+          method: "POST",
+          body: formData,
+          credentials: "include",
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`Upload failed: ${response.status}`);
+      }
+
+      const data: CloudUploadData[] = await response.json();
+      setAssetIdAndCheckParity(data);
+    } catch (error) {
+      console.error("Upload failed:", error);
+
+      uploadQueue.current.unshift(...queue);
+    }
+  };
+
+  const setAssetIdAndCheckParity = (data: CloudUploadData[]) => {
+    data.forEach((item) => {
+      setImages((prev) => {
+        const img = prev[item.canvasId];
+
+        if (!img) {
+          console.warn(
+            "Image not found for canvasId:",
+            item.canvasId
+          );
+          return prev;
+        }
+
+        const updatedImage: CanvasImageData = {
+          ...img,
+          assetId: item.id,
+        };
+        console.log(img, item)
+        if (
+          img.x !== item.x ||
+          img.y !== item.y ||
+          img.width !== item.width ||
+          img.height !== item.height ||
+          img.rotation !== item.rotation ||
+          img.active !== item.active
+        ) {
+          const newDelta: DeltaSystem = {
+            id: item.canvasId,
+            type: "change",
+            oldData: img,
+            newData: {
+              ...updatedImage,
+              x: item.x,
+              y: item.y,
+              width: item.width,
+              height: item.height,
+              rotation: item.rotation ?? 0,
+              active: item.active,
+            },
+          };
+
+          addUpdateQueue(newDelta);
+        }
+
+        return {
+          ...prev,
+          [item.canvasId]: updatedImage,
+        };
+      });
+    });
+  };
+
+  const addUpdateQueue = (delta: DeltaSystem) => {
+    updateQueue.current.push(delta);
+
+
+    if (updateTimer.current) {
+      clearTimeout(updateTimer.current);
+    }
+
+    updateTimer.current = setTimeout(() => {
+      cloudObjectSync();
+    }, 2000);
+  }
+
+  const cloudObjectSync = async () => {
+    const queue = updateQueue.current;
+
+    if (queue.length === 0) return;
+
+    const compressed: Record<string, CanvasImageData | null> = {};
+    updateQueue.current = [];
+    updateTimer.current = null;
+    queue.map((item) => {
+      if (item.newData?.assetId) {
+        compressed[item.newData?.assetId] = item.newData;
+      }
+    })
+
+    try {
+      const response = await fetch(
+        `http://localhost:8080/api/project/item/`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(compressed),
+          credentials: "include",
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`Update failed: ${response.status}`);
+      }
+
+      console.log("Update successful");
+    } catch (error) {
+      console.error("Update failed:", error);
+
+      updateQueue.current.unshift(...queue);
+    }
+  }
+
 
   const convertToWorldCoordinate = (position: Position) => {
     const stage = stageRef.current;
@@ -50,8 +264,17 @@ export default function ProjectView() {
     };
   };
 
-  const createHistory = (id: string, type: "create"|"change", oldData: CanvasImageData | null, newData: CanvasImageData | null) => {
-    const newHistory:DeltaSystem = {
+  const updateObjData = (id: string, type: "create" | "change", data: CanvasImageData) => {
+    setImages((prev) => ({
+      ...prev,
+      [id]: data,
+    }));
+    createHistory(id, type, images[id], data);
+
+  };
+
+  const createHistory = (id: string, type: "create" | "change", oldData: CanvasImageData | null, newData: CanvasImageData | null) => {
+    const newHistory: DeltaSystem = {
       id,
       type,
       oldData,
@@ -59,21 +282,32 @@ export default function ProjectView() {
     }
     undoStack.current.push(newHistory);
     redoStack.current = [];
+    if (newData?.assetId) {
+      addUpdateQueue(newHistory);
+    }
   }
 
   const handleUndo = () => {
     const history = undoStack.current.pop();
-    if(!history) return;
+    if (!history) return;
     redoStack.current.push(history);
-    if(history.type == "create"){
+    if (history.oldData?.assetId) {
+      const updateDelta: DeltaSystem = {
+        ...history,
+        oldData: history.newData,
+        newData: history.oldData
+      }
+      addUpdateQueue(updateDelta);
+    }
+    if (history.type == "create") {
       setImages((prev) => ({
         ...prev,
-        [history.id]: {...prev[history.id], active: false},
+        [history.id]: { ...prev[history.id], active: false },
       }));
     }
-    else {      
+    else {
       const data = history.oldData;
-      if(data != null){
+      if (data != null) {
         setImages((prev) => ({
           ...prev,
           [history.id]: data,
@@ -83,19 +317,21 @@ export default function ProjectView() {
   };
 
   const handleRedo = () => {
-    console.log(redoStack);
     const history = redoStack.current.pop();
-    if(!history) return;
+    if (!history) return;
     undoStack.current.push(history);
-    if(history.type == "create"){
+    if (history.oldData?.assetId) {
+      addUpdateQueue(history);
+    }
+    if (history.type == "create") {
       setImages((prev) => ({
         ...prev,
-        [history.id]: {...prev[history.id], active: true},
+        [history.id]: { ...prev[history.id], active: true },
       }));
     }
-    else {      
+    else {
       const data = history.newData;
-      if(data != null){
+      if (data != null) {
         setImages((prev) => ({
           ...prev,
           [history.id]: data,
@@ -109,28 +345,27 @@ export default function ProjectView() {
     position: Position
   ) => {
     const newImages: Record<string, CanvasImageData> = {};
-    let newId:string[] = [];
-    imageFiles.forEach((file, index) => {
+    imageFiles.forEach((file) => {
       const id = crypto.randomUUID();
-      newId.push(id);
-      newImages[id] = {
+      const createdImage:CanvasImageData = {
         src: URL.createObjectURL(file),
         x: position.x,
         y: position.y,
-        active: true
-      };
+        active: true,
+        width: null,
+        height: null,
+        rotation: 0,
+      }
+      newImages[id] = createdImage;
+      createHistory(id, "create", null, createdImage);
+      addUploadQueue(id, file, createdImage);
     });
 
     setImages((prev) => ({
       ...prev,
       ...newImages,
     }));
-    Object.entries(newImages).map(([id, obj]) => { 
-      createHistory(id, "create", null, obj);
-    })
   };
-
-  
 
   const handleDragOver = (
     event: React.DragEvent<HTMLDivElement>
@@ -169,9 +404,9 @@ export default function ProjectView() {
     const y = event.clientY - rect.top;
 
 
-    const position = convertToWorldCoordinate({x,y})
-    if(!position) return;
-    addImages(imageFiles,position);
+    const position = convertToWorldCoordinate({ x, y })
+    if (!position) return;
+    addImages(imageFiles, position);
   };
 
   const handlePaste = (event: ClipboardEvent) => {
@@ -193,33 +428,58 @@ export default function ProjectView() {
     if (imageFiles.length === 0) return;
 
     event.preventDefault();
-    if(!containerRef.current) return;
+    if (!containerRef.current) return;
     const x = containerRef.current.clientWidth / 2;
     const y = containerRef.current.clientHeight / 2;
 
-    const position = convertToWorldCoordinate({x, y})
-    if(!position) return;
+    const position = convertToWorldCoordinate({ x, y })
+    if (!position) return;
     addImages(imageFiles, position);
   };
 
   const handleKeyDown = (e: KeyboardEvent) => {
-      // Ctrl + Shift + Z → Redo
-      if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "z") {
-          e.preventDefault();
-          handleRedo();
-          return;
+    if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "z") {
+      e.preventDefault();
+      handleRedo();
+      return;
+    }
+
+    if (e.ctrlKey && e.key.toLowerCase() === "z") {
+      e.preventDefault();
+      handleUndo();
+    }
+  };
+  const fetchData = async () => {
+    try {
+      const response = await fetch(
+        `http://localhost:8080/api/project/${projectId}`,
+        {
+          method: "GET",
+          credentials: "include",
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`Fetch failed: ${response.status}`);
       }
 
-      // Ctrl + Z → Undo
-      if (e.ctrlKey && e.key.toLowerCase() === "z") {
-          e.preventDefault();
-          handleUndo();
-      }
+      const data: ProjectResponse = await response.json();
+
+      setImages(data.items);
+
+      console.log("fetch successful");
+      setImages(data.items);
+
+    } catch (error) {
+      console.error("fetch failed:", error);
+    }
   };
 
   useEffect(() => {
+
     window.addEventListener("paste", handlePaste);
     window.addEventListener("keydown", handleKeyDown);
+    fetchData();
 
     return () => {
       window.removeEventListener("paste", handlePaste);
@@ -227,13 +487,6 @@ export default function ProjectView() {
     };
   }, []);
 
-  const updateObjData = (id: string, type: "create"|"change", data: CanvasImageData) => {
-    setImages((prev) => ({
-      ...prev,
-      [id]: data,
-    }));
-    createHistory(id, type, images[id], data);
-  };
 
 
   return (
