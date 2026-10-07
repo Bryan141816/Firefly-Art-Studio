@@ -11,12 +11,13 @@ type InfiniteCanvasContextMenuComponent = {
     setContextMenu: React.Dispatch<
         React.SetStateAction<InfiniteCanvasContextMenu>
     >;
-    onDelete: (id: string) => void;
+    onDelete: () => void;
 };
 
 export default function InfiniteCanvasContextMenuComponent({
     contextMenu,
     setContextMenu,
+    onDelete
 }: InfiniteCanvasContextMenuComponent) {
     const menuRef = useRef<HTMLDivElement>(null);
 
@@ -118,9 +119,7 @@ export default function InfiniteCanvasContextMenuComponent({
                     hover:bg-destructive/10
                     hover:text-destructive
                 "
-                onClick={() => {
-                    // Delete logic
-                }}
+                onClick={onDelete}
             >
                 Delete
             </button>

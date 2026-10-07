@@ -5,7 +5,6 @@ import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import type { CanvasImageData } from "@/types/CanvasObject";
 
-
 type CloudUploadData = {
   canvasId: string
   src: string
@@ -17,6 +16,7 @@ type CloudUploadData = {
   active: boolean,
   id: string
 }
+type Image = Record<string, CanvasImageData>;
 
 type Position = {
   x: number,
@@ -52,30 +52,29 @@ type ProjectResponse = {
     untitledNo: number;
     description: string | null;
   };
-  items: Record<string, CanvasImageData>;
+  items: Image;
 };
-
 export default function ProjectEditor() {
   const { projectId } = useParams<{ projectId: string }>();
-  
-  const [images, setImages] = useState<Record<string, CanvasImageData>>({});
-  
+
+  const [images, setImages] = useState<Image>({});
+  const imageRef = useRef<Image>(images);
   const containerRef = useRef<HTMLDivElement>(null);
-  
+
   const stageRef = useRef<Konva.Stage>(null);
-  
+
   const undoStack = useRef<DeltaSystem[]>([])
   const redoStack = useRef<DeltaSystem[]>([])
-  
+
   const UPLOAD_TIME_DEBOUNCE_DURATION = 2000
   const uploadQueue = useRef<UploadQueueData[]>([]);
   const uploadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  
+
   const UPDATE_TIME_DEBOUNCE_DURATION = 2000
   const updateQueue = useRef<UpdateDelta[]>([]);
   const updateTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  
-  
+
+
   const HISTORY_GROUP_TIME = 300;
   const historyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingHistory = useRef<DeltaSystem | null>(null);
@@ -98,6 +97,7 @@ export default function ProjectEditor() {
   };
 
   const uploadFiles = async () => {
+
     const queue = uploadQueue.current;
 
     if (queue.length === 0 || !projectId) return;
@@ -153,10 +153,23 @@ export default function ProjectEditor() {
       uploadQueue.current.unshift(...queue);
     }
   };
+  const updateImages = (
+    value: Image | ((prev: Image) => Image)
+  ) => {
+    setImages(prev => {
+      const next =
+        typeof value === "function"
+          ? value(prev)
+          : value;
 
+      imageRef.current = next;
+
+      return next;
+    });
+  };
   const setAssetIdAndCheckParity = (data: CloudUploadData[]) => {
     data.forEach((item) => {
-      setImages((prev) => {
+      updateImages((prev) => {
         const img = prev[item.canvasId];
 
         if (!img) {
@@ -171,7 +184,7 @@ export default function ProjectEditor() {
           ...img,
           assetId: item.id,
         };
-    
+
         if (
           img.x !== item.x ||
           img.y !== item.y ||
@@ -192,10 +205,9 @@ export default function ProjectEditor() {
               active: item.active,
             },
           };
-
           addUpdateQueue(delta);
         }
-
+        console.log("done");
         return {
           ...prev,
           [item.canvasId]: updatedImage,
@@ -206,7 +218,6 @@ export default function ProjectEditor() {
 
   const addUpdateQueue = (delta: UpdateDelta) => {
     updateQueue.current.push(delta);
-
 
     if (updateTimer.current) {
       clearTimeout(updateTimer.current);
@@ -219,15 +230,17 @@ export default function ProjectEditor() {
 
   const cloudObjectSync = async () => {
     const queue = updateQueue.current;
-
     if (queue.length === 0) return;
+    console.log(queue);
 
     const compressed: Record<string, CanvasImageData | null> = {};
     updateQueue.current = [];
     updateTimer.current = null;
     queue.map((item) => {
-      if (item.changes?.assetId) {
-        compressed[item.changes.assetId] = item.changes;
+      const imageCurrent = imageRef.current[item.id];
+      const assetId = imageCurrent.assetId;
+      if (assetId) {
+        compressed[assetId] = item.changes ?? { ...imageCurrent, active: false };
       }
     })
 
@@ -271,7 +284,7 @@ export default function ProjectEditor() {
   };
 
   const updateObjData = (id: string, type: "create" | "change", data: CanvasImageData) => {
-    setImages((prev) => ({
+    updateImages((prev) => ({
       ...prev,
       [id]: data,
     }));
@@ -318,20 +331,22 @@ export default function ProjectEditor() {
 
       historyTimer.current = null;
     }, HISTORY_GROUP_TIME);
-    addUpdateQueue({id: changes.id, changes: changes.newData})
+
+    if (imageRef.current[changes.id]?.assetId) {
+      addUpdateQueue({ id: changes.id, changes: changes.newData })
+    }
   };
 
   const handleUndo = () => {
     const history = undoStack.current.pop();
     if (!history) return;
     redoStack.current.push(history);
-    history.changes.map((change)=>{
-
-      if (change.oldData?.assetId) {
-        addUpdateQueue({id: change.id, changes: change.oldData});
+    history.changes.map((change) => {
+      if (imageRef.current[change.id].assetId) {
+        addUpdateQueue({ id: change.id, changes: change.oldData });
       }
       if (history.type == "create") {
-        setImages((prev) => ({
+        updateImages((prev) => ({
           ...prev,
           [change.id]: { ...prev[change.id], active: false },
         }));
@@ -339,7 +354,7 @@ export default function ProjectEditor() {
       else {
         const data = change.oldData;
         if (data != null) {
-          setImages((prev) => ({
+          updateImages((prev) => ({
             ...prev,
             [change.id]: data,
           }));
@@ -352,13 +367,13 @@ export default function ProjectEditor() {
     const history = redoStack.current.pop();
     if (!history) return;
     undoStack.current.push(history);
-    history.changes.map((change)=>{
-
-      if (change.oldData?.assetId) {
-        addUpdateQueue({id: change.id, changes: change.newData});
+    history.changes.map((change) => {
+      if (imageRef.current[change.id].assetId) {
+        addUpdateQueue({ id: change.id, changes: change.newData });
       }
+
       if (history.type == "create") {
-        setImages((prev) => ({
+        updateImages((prev) => ({
           ...prev,
           [change.id]: { ...prev[change.id], active: true },
         }));
@@ -366,7 +381,7 @@ export default function ProjectEditor() {
       else {
         const data = change.newData;
         if (data != null) {
-          setImages((prev) => ({
+          updateImages((prev) => ({
             ...prev,
             [change.id]: data,
           }));
@@ -380,7 +395,7 @@ export default function ProjectEditor() {
     position: Position
   ) => {
     const newImages: Record<string, CanvasImageData> = {};
-    
+
     imageFiles.forEach((file) => {
       const id = crypto.randomUUID();
       const createdImage: CanvasImageData = {
@@ -392,7 +407,7 @@ export default function ProjectEditor() {
         height: null,
         rotation: 0,
       }
-    
+
       newImages[id] = createdImage;
 
       const delta: Delta = {
@@ -400,12 +415,12 @@ export default function ProjectEditor() {
         oldData: null,
         newData: createdImage
       }
-    
+
       createHistory("create", delta);
       addUploadQueue(id, file, createdImage);
     });
 
-    setImages((prev) => ({
+    updateImages((prev) => ({
       ...prev,
       ...newImages,
     }));
@@ -448,9 +463,9 @@ export default function ProjectEditor() {
     const y = event.clientY - rect.top;
 
     const position = convertToWorldCoordinate({ x, y })
-    
+
     if (!position) return;
-    
+
     addImages(imageFiles, position);
   };
 
@@ -510,7 +525,7 @@ export default function ProjectEditor() {
 
       const data: ProjectResponse = await response.json();
 
-      setImages(data.items);
+      updateImages(data.items);
     } catch (error) {
       console.error("fetch failed:", error);
     }

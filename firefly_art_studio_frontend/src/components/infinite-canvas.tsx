@@ -1,10 +1,10 @@
 import type Konva from "konva";
 import { useEffect, useRef, useState, type RefObject } from "react";
-import { Layer, Stage, Image, Transformer, Shape } from "react-konva";
+import { Layer, Stage, Image, Transformer, Shape, Rect } from "react-konva";
 import useImage from "use-image";
 import type { InfiniteCanvasContextMenu } from "./infinit-canvas-context-menu";
 import InfiniteCanvasContextMenuComponent from "./infinit-canvas-context-menu";
-import type { CanvasImageData } from "@/pages/ProjectEditor";
+import type { CanvasImageData } from "@/types/CanvasObject";
 
 type InfiniteCanvasProps = {
     images: Record<string, CanvasImageData>;
@@ -57,25 +57,6 @@ const CanvasImage = ({
                 }
             }}
 
-            // onContextMenu={(e) => {
-            //     e.evt.preventDefault();
-            //     e.cancelBubble = true;
-
-            //     const stage = e.target.getStage();
-            //     if (!stage) return;
-
-            //     const pointerPosition = stage.getPointerPosition();
-            //     if (!pointerPosition) return;
-
-            //     const containerRect =
-            //         stage.container().getBoundingClientRect();
-
-            //     onContextMenu(
-            //         containerRect.left + pointerPosition.x + 4,
-            //         containerRect.top + pointerPosition.y + 4
-            //     );
-            // }}
-
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
 
@@ -85,8 +66,9 @@ const CanvasImage = ({
                     x: e.target.x(),
                     y: e.target.y(),
                 });
-
-                onSelect();
+                if (!isSelected) {
+                    onSelect();
+                }
             }}
 
             onTransformEnd={(e) => {
@@ -135,6 +117,16 @@ export default function InfiniteCanvas({
     const transformerRef = useRef<Konva.Transformer | null>(null);
 
     const imageRefs = useRef<Record<string, Konva.Image | null>>({});
+
+    const [selectionBox, setSelectionBox] = useState<{
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+    } | null>(null);
+
+    const isSelecting = useRef(false);
+    const selectionStart = useRef<{ x: number; y: number } | null>(null);
 
     const MIN_SCALE = 0.05;
     const MAX_SCALE = 5;
@@ -204,7 +196,6 @@ export default function InfiniteCanvas({
 
         const oldScale = stage.scaleX();
 
-        // Scroll up = zoom in, scroll down = zoom out
         const direction = e.evt.deltaY > 0 ? -1 : 1;
 
         const newScale =
@@ -217,11 +208,9 @@ export default function InfiniteCanvas({
             Math.min(MAX_SCALE, newScale)
         );
 
-        // Mouse position relative to the canvas
         const pointer = stage.getPointerPosition();
         if (!pointer) return;
 
-        // Keep the point under the mouse in the same position
         const mousePointTo = {
             x: (pointer.x - stage.x()) / oldScale,
             y: (pointer.y - stage.y()) / oldScale,
@@ -241,34 +230,128 @@ export default function InfiniteCanvas({
         stage.position(newPos);
         stage.batchDraw();
     };
-    const handleMouseDown = (e: Konva.KonvaEventObject<MouseEvent>) => {
+    const getWorldPointer = () => {
+        const stage = stageRef.current;
+
+        if (!stage) return null;
+
+        const pointer = stage.getPointerPosition();
+
+        if (!pointer) return null;
+
+        return {
+            x: (pointer.x - stage.x()) / stage.scaleX(),
+            y: (pointer.y - stage.y()) / stage.scaleY(),
+        };
+    };
+    const handleMouseDown = (
+        e: Konva.KonvaEventObject<MouseEvent>
+    ) => {
         if (e.evt.button === 0) {
-            if (selectedObj) {
-                const clickedOnEmpty = e.target === e.target.getStage();
-                if (clickedOnEmpty) {
-                    setContextMenu({
-                        show: false,
-                        x: 0,
-                        y: 0,
-                    });
-                    setSelectedObj([]);
-                }
+            const stage = stageRef.current;
+
+            if (!stage) return;
+
+            const clickedOnEmpty = e.target === stage;
+
+            if (!clickedOnEmpty) {
+                return;
             }
+
+            const pointer = getWorldPointer();
+
+            if (!pointer) return;
+
+            isSelecting.current = true;
+            selectionStart.current = pointer;
+
+            setSelectionBox({
+                x: pointer.x,
+                y: pointer.y,
+                width: 0,
+                height: 0,
+            });
+
+            setContextMenu({
+                show: false,
+                x: 0,
+                y: 0,
+            });
         }
+
         else if (e.evt.button === 1) {
             if (contextMenu.show) {
-                return
+                return;
             }
 
             setIsPanning(true);
             stageRef.current?.startDrag();
         }
     };
-    const handleMouseUp = (e: Konva.KonvaEventObject<MouseEvent>) => {
-        if (e.evt.button === 1) {
+    const handleMouseUp = (
+        e: Konva.KonvaEventObject<MouseEvent>
+    ) => {
+        if (e.evt.button === 0 && isSelecting.current) {
+            isSelecting.current = false;
+
+            const box = selectionBox;
+
+            selectionStart.current = null;
+            setSelectionBox(null);
+
+            if (!box) return;
+
+            const selected: string[] = [];
+
+            Object.entries(images).forEach(([id, obj]) => {
+                if (!obj.active) return;
+
+                const node = imageRefs.current[id];
+
+                if (!node) return;
+
+                const rect = node.getClientRect({
+                    relativeTo: stageRef.current!,
+                });
+
+                const intersects =
+                    rect.x < box.x + box.width &&
+                    rect.x + rect.width > box.x &&
+                    rect.y < box.y + box.height &&
+                    rect.y + rect.height > box.y;
+
+                if (intersects) {
+                    selected.push(id);
+                }
+            });
+
+            setSelectedObj(selected);
+        }
+
+        else if (e.evt.button === 1) {
             setIsPanning(false);
             stageRef.current?.stopDrag();
         }
+    };
+    const handleMouseMove = (
+        e: Konva.KonvaEventObject<MouseEvent>
+    ) => {
+        if (!isSelecting.current) return;
+
+        const start = selectionStart.current;
+
+        if (!start) return;
+
+        const current = getWorldPointer();
+
+        if (!current) return;
+
+        setSelectionBox({
+            x: Math.min(start.x, current.x),
+            y: Math.min(start.y, current.y),
+            width: Math.abs(current.x - start.x),
+            height: Math.abs(current.y - start.y),
+        });
     };
 
     const handleKonvaContextMenu = (
@@ -314,16 +397,20 @@ export default function InfiniteCanvas({
             containerRect.top + pointer.y + 4
         );
     };
-
-    const handleContextMenu = (x: number, y: number) => {
+    const handleContextMenu = (x: number, y: number, show: boolean = true) => {
         setContextMenu({
-            show: true,
+            show,
             x,
             y
         })
     };
 
-
+    const handleDelete = () => {
+        selectedObj.map((id) => {
+            updateCanvasObj(id, "change", { ...images[id], active: false })
+        })
+        handleContextMenu(0, 0, false);
+    }
     return <div ref={childRef}>
         <Stage
             ref={stageRef}
@@ -332,13 +419,12 @@ export default function InfiniteCanvas({
             onWheel={handleWheel}
             draggable={false}
             onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
             onContextMenu={handleKonvaContextMenu}
-            style={{
-                cursor: isPanning ? "grabbing" : "default"
-            }}
         >
             <Layer>
+
                 {Object.entries(images).map(([id, obj]) => {
                     if (!obj.active) return null;
 
@@ -377,7 +463,18 @@ export default function InfiniteCanvas({
                         />
                     );
                 })}
-
+                {selectionBox && (
+                    <Rect
+                        x={selectionBox.x}
+                        y={selectionBox.y}
+                        width={selectionBox.width}
+                        height={selectionBox.height}
+                        fill="rgba(0, 174, 239, 0.15)"
+                        stroke="#00AEEF"
+                        strokeWidth={1}
+                        listening={false}
+                    />
+                )}
                 {selectedObj.length > 0 && (
                     <Transformer
                         ref={transformerRef}
@@ -403,11 +500,7 @@ export default function InfiniteCanvas({
         {contextMenu.show && <InfiniteCanvasContextMenuComponent
             contextMenu={contextMenu}
             setContextMenu={setContextMenu}
-            onDelete={
-                (id: string) => {
-                    updateCanvasObj(id, "change", { ...images[id], active: false })
-                }
-            }
+            onDelete={handleDelete}
         />
         }
     </div>
