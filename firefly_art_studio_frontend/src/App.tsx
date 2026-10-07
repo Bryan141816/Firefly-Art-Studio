@@ -3,9 +3,10 @@ import { useEffect, useState } from "react"
 
 import AppLayout from "@/components/app-layout"
 import LoginPage from "./pages/Login"
-import Projects from "./pages/Projects"
+import ProjectsList from "./pages/ProjectsList"
 import type { User } from "./types/User"
-import ProjectView from "./pages/ProjectView"
+import ProjectEditor from "./pages/ProjectEditor"
+import { apiFetch } from "./lib/api"
 
 function References() {
   return <h1>References</h1>
@@ -13,7 +14,7 @@ function References() {
 
 function LoadingScreen() {
   return (
-    <div className="flex min-h-screen items-center justify-center">
+    <div className="flex min-h-screen items-center justify-center w-full">
       <div className="text-muted-foreground">
         Loading...
       </div>
@@ -33,35 +34,31 @@ function App() {
       "/login": "Login",
     }
 
-    document.title = `Firefly Art Studio | ${titles[location.pathname]}`
+    document.title =
+      `Firefly Art Studio | ${titles[location.pathname] ?? "Firefly Art Studio"}`
   }, [location.pathname])
 
   useEffect(() => {
-    const fetchUser = async () => {
-      try {
-        const response = await fetch("http://localhost:8080/api/me", {
-          credentials: "include",
-        })
-
+    apiFetch("/me", {
+      credentials: "include",
+    })
+      .then(async response => {
         if (!response.ok) {
-          throw new Error("Failed to fetch user")
+          setUser(null)
+          return
         }
 
         const user: User = await response.json()
         setUser(user)
-      } catch (error) {
+      })
+      .catch(error => {
         console.error("Error fetching user:", error)
-      } finally {
+        setUser(null)
+      })
+      .finally(() => {
         setLoading(false)
-      }
-    }
-
-    fetchUser()
+      })
   }, [])
-
-  if (loading) {
-    return <LoadingScreen />
-  }
 
   return (
     <Routes>
@@ -69,16 +66,29 @@ function App() {
 
       <Route
         element={
-          user ? (
-            <AppLayout user={user} />
-          ) : (
-            <Navigate to="/login" replace />
-          )
+          <AppLayout user={user} />
         }
       >
-        <Route path="/" element={<Projects />} />
-        <Route path="/references" element={<References />} />
-        <Route path="/project" element={<ProjectView/>} />
+        <Route
+          path="/"
+          element={
+            loading ? <LoadingScreen /> : user ? <ProjectsList /> : <Navigate to="/login" replace />
+          }
+        />
+
+        <Route
+          path="/references"
+          element={
+            loading ? <LoadingScreen /> : user ? <References /> : <Navigate to="/login" replace />
+          }
+        />
+
+        <Route
+          path="/project/:projectId"
+          element={
+            loading ? <LoadingScreen /> : user ? <ProjectEditor /> : <Navigate to="/login" replace />
+          }
+        />
       </Route>
     </Routes>
   )

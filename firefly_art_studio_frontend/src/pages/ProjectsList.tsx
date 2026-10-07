@@ -4,16 +4,17 @@ import { IconPlus } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
 import type { Project } from "@/types/Project";
 import ProjectCard from "@/components/project-card";
+import { apiFetch } from "@/lib/api";
 
 
 
-function Projects() {
+function ProjectsList() {
   const [projects, setProjects] = useState<any[]>([]);
    const [loading, setLoading] = useState(true);
     const fetchProjects = async () => {
     try {
-      const response = await fetch(
-        "http://localhost:8080/api/projects",
+      const response = await apiFetch(
+        "/projects",
         {
           credentials: "include",
         }
@@ -39,7 +40,7 @@ function Projects() {
 
   async function onCreateProject() {
     try {
-      const response = await fetch("http://localhost:8080/api/project", {
+      const response = await apiFetch("/project", {
         method: "POST",
         credentials: "include",
         headers: {
@@ -65,8 +66,8 @@ function Projects() {
 
   async function onDeleteProject(id: string) {
     try {
-      const response = await fetch(
-        `http://localhost:8080/api/project/${id}`,
+      const response = await apiFetch(
+        `/project/${id}`,
         {
           method: "DELETE",
           credentials: "include",
@@ -125,4 +126,4 @@ function Projects() {
   );
 }
 
-export default Projects;
+export default ProjectsList;

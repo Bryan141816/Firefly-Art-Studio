@@ -18,9 +18,9 @@ import {
 } from "@/components/ui/sidebar"
 
 type User = {
-  name: string
-  email: string
-  avatar: string
+  name?: string
+  email?: string
+  avatar?: string
 }
 
 interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
