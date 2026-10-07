@@ -2,6 +2,7 @@ import InfiniteCanvas from "@/components/infinite-canvas";
 import type Konva from "konva";
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
+import type { Update } from "vite/types/hmrPayload.js";
 
 export type CanvasImageData = {
   assetId?: string | null;
@@ -31,17 +32,26 @@ type Position = {
   y: number
 }
 
-type DeltaSystem = {
+type Delta = {
   id: string
-  type: "create" | "change"
   oldData: CanvasImageData | null;
   newData: CanvasImageData | null;
+}
+
+type DeltaSystem = {
+  type: "create" | "change"
+  changes: Delta[]
 }
 
 type UploadQueueData = {
   id: string
   file: File
   data: CanvasImageData
+}
+
+type UpdateDelta = {
+  id: string
+  changes: CanvasImageData | null;
 }
 
 type ProjectResponse = {
@@ -68,8 +78,13 @@ export default function ProjectView() {
   const uploadQueue = useRef<UploadQueueData[]>([]);
   const uploadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const updateQueue = useRef<DeltaSystem[]>([]);
+  const updateQueue = useRef<UpdateDelta[]>([]);
   const updateTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const HISTORY_GROUP_TIME = 300;
+
+  const historyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingHistory = useRef<DeltaSystem | null>(null);
 
   const { projectId } = useParams<{ projectId: string }>();
 
@@ -86,7 +101,7 @@ export default function ProjectView() {
 
     uploadTimer.current = setTimeout(() => {
       uploadFiles();
-    }, 5000);
+    }, 2000);
   };
 
   const uploadFiles = async () => {
@@ -162,7 +177,6 @@ export default function ProjectView() {
           ...img,
           assetId: item.id,
         };
-        console.log(img, item)
         if (
           img.x !== item.x ||
           img.y !== item.y ||
@@ -171,11 +185,9 @@ export default function ProjectView() {
           img.rotation !== item.rotation ||
           img.active !== item.active
         ) {
-          const newDelta: DeltaSystem = {
+          const delta: UpdateDelta = {
             id: item.canvasId,
-            type: "change",
-            oldData: img,
-            newData: {
+            changes: {
               ...updatedImage,
               x: item.x,
               y: item.y,
@@ -186,7 +198,7 @@ export default function ProjectView() {
             },
           };
 
-          addUpdateQueue(newDelta);
+          addUpdateQueue(delta);
         }
 
         return {
@@ -197,7 +209,7 @@ export default function ProjectView() {
     });
   };
 
-  const addUpdateQueue = (delta: DeltaSystem) => {
+  const addUpdateQueue = (delta: UpdateDelta) => {
     updateQueue.current.push(delta);
 
 
@@ -219,8 +231,8 @@ export default function ProjectView() {
     updateQueue.current = [];
     updateTimer.current = null;
     queue.map((item) => {
-      if (item.newData?.assetId) {
-        compressed[item.newData?.assetId] = item.newData;
+      if (item.changes?.assetId) {
+        compressed[item.changes.assetId] = item.changes;
       }
     })
 
@@ -269,75 +281,104 @@ export default function ProjectView() {
       ...prev,
       [id]: data,
     }));
-    createHistory(id, type, images[id], data);
+    const delta: Delta = {
+      id,
+      oldData: images[id],
+      newData: data
+    }
+    createHistory(type, delta);
 
   };
 
-  const createHistory = (id: string, type: "create" | "change", oldData: CanvasImageData | null, newData: CanvasImageData | null) => {
-    const newHistory: DeltaSystem = {
-      id,
-      type,
-      oldData,
-      newData
+  const createHistory = (
+    type: "create" | "change",
+    changes: Delta
+  ) => {
+    if (!pendingHistory.current) {
+      pendingHistory.current = {
+        type,
+        changes: [changes]
+      }
     }
-    undoStack.current.push(newHistory);
-    redoStack.current = [];
-    if (newData?.assetId) {
-      addUpdateQueue(newHistory);
+
+    const existing = pendingHistory.current.changes.find(
+      change => change.id === changes.id
+    );
+
+    if (existing) {
+      existing.newData = changes.newData;
+    } else {
+      pendingHistory.current.changes.push(changes);
     }
-  }
+
+    if (historyTimer.current) {
+      clearTimeout(historyTimer.current);
+    }
+
+    historyTimer.current = setTimeout(() => {
+      if (pendingHistory.current) {
+        undoStack.current.push(pendingHistory.current);
+        redoStack.current = [];
+        pendingHistory.current = null;
+      }
+
+      historyTimer.current = null;
+    }, HISTORY_GROUP_TIME);
+    addUpdateQueue({id: changes.id, changes: changes.newData})
+  };
 
   const handleUndo = () => {
     const history = undoStack.current.pop();
     if (!history) return;
     redoStack.current.push(history);
-    if (history.oldData?.assetId) {
-      const updateDelta: DeltaSystem = {
-        ...history,
-        oldData: history.newData,
-        newData: history.oldData
+    history.changes.map((change)=>{
+
+      if (change.oldData?.assetId) {
+        addUpdateQueue({id: change.id, changes: change.oldData});
       }
-      addUpdateQueue(updateDelta);
-    }
-    if (history.type == "create") {
-      setImages((prev) => ({
-        ...prev,
-        [history.id]: { ...prev[history.id], active: false },
-      }));
-    }
-    else {
-      const data = history.oldData;
-      if (data != null) {
+      if (history.type == "create") {
         setImages((prev) => ({
           ...prev,
-          [history.id]: data,
+          [change.id]: { ...prev[change.id], active: false },
         }));
       }
-    }
+      else {
+        const data = change.oldData;
+        if (data != null) {
+          setImages((prev) => ({
+            ...prev,
+            [change.id]: data,
+          }));
+        }
+      }
+    })
   };
 
   const handleRedo = () => {
     const history = redoStack.current.pop();
     if (!history) return;
     undoStack.current.push(history);
-    if (history.oldData?.assetId) {
-      addUpdateQueue(history);
-    }
-    if (history.type == "create") {
-      setImages((prev) => ({
-        ...prev,
-        [history.id]: { ...prev[history.id], active: true },
-      }));
-    }
-    else {
-      const data = history.newData;
-      if (data != null) {
+    history.changes.map((change)=>{
+
+      if (change.oldData?.assetId) {
+        addUpdateQueue({id: change.id, changes: change.newData});
+      }
+      if (history.type == "create") {
         setImages((prev) => ({
           ...prev,
-          [history.id]: data,
+          [change.id]: { ...prev[change.id], active: true },
         }));
       }
-    }
+      else {
+        const data = change.newData;
+        if (data != null) {
+          setImages((prev) => ({
+            ...prev,
+            [change.id]: data,
+          }));
+        }
+      }
+    })
   };
 
   const addImages = (
@@ -347,7 +388,7 @@ export default function ProjectView() {
     const newImages: Record<string, CanvasImageData> = {};
     imageFiles.forEach((file) => {
       const id = crypto.randomUUID();
-      const createdImage:CanvasImageData = {
+      const createdImage: CanvasImageData = {
         src: URL.createObjectURL(file),
         x: position.x,
         y: position.y,
@@ -357,7 +398,13 @@ export default function ProjectView() {
         rotation: 0,
       }
       newImages[id] = createdImage;
-      createHistory(id, "create", null, createdImage);
+
+      const delta: Delta = {
+        id,
+        oldData: null,
+        newData: createdImage
+      }
+      createHistory("create", delta);
       addUploadQueue(id, file, createdImage);
     });
 
