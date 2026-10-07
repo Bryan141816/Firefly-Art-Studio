@@ -4,7 +4,7 @@ import { Layer, Stage, Image, Transformer, Shape } from "react-konva";
 import useImage from "use-image";
 import type { InfiniteCanvasContextMenu } from "./infinit-canvas-context-menu";
 import InfiniteCanvasContextMenuComponent from "./infinit-canvas-context-menu";
-import type { CanvasImageData } from "@/pages/ProjectView";
+import type { CanvasImageData } from "@/pages/ProjectEditor";
 
 type InfiniteCanvasProps = {
     images: Record<string, CanvasImageData>;
@@ -301,14 +301,6 @@ export default function InfiniteCanvas({
             localPointer.x <= width &&
             localPointer.y >= 0 &&
             localPointer.y <= height;
-
-        console.log({
-            pointer,
-            localPointer,
-            width,
-            height,
-            insideTransformer,
-        });
 
         if (!insideTransformer) {
             return;

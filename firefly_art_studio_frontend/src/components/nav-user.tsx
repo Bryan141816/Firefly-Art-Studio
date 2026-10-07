@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/sidebar"
 
 import { Skeleton } from "@/components/ui/skeleton"
+import { apiFetch } from "@/lib/api"
 
 export function NavUser({
   user,
@@ -34,7 +35,7 @@ export function NavUser({
   const { isMobile } = useSidebar()
 
   async function onLogOutClick() {
-    await fetch("http://localhost:8080/logout", {
+    await apiFetch("/logout", {
       method: "POST",
       credentials: "include",
     })

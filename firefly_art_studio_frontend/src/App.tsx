@@ -3,9 +3,10 @@ import { useEffect, useState } from "react"
 
 import AppLayout from "@/components/app-layout"
 import LoginPage from "./pages/Login"
-import Projects from "./pages/Projects"
+import ProjectsList from "./pages/ProjectsList"
 import type { User } from "./types/User"
-import ProjectView from "./pages/ProjectView"
+import ProjectEditor from "./pages/ProjectEditor"
+import { apiFetch } from "./lib/api"
 
 function References() {
   return <h1>References</h1>
@@ -38,7 +39,7 @@ function App() {
   }, [location.pathname])
 
   useEffect(() => {
-    fetch("http://localhost:8080/api/me", {
+    apiFetch("/me", {
       credentials: "include",
     })
       .then(async response => {
@@ -71,7 +72,7 @@ function App() {
         <Route
           path="/"
           element={
-            loading ? <LoadingScreen /> : user ? <Projects /> : <Navigate to="/login" replace />
+            loading ? <LoadingScreen /> : user ? <ProjectsList /> : <Navigate to="/login" replace />
           }
         />
 
@@ -85,7 +86,7 @@ function App() {
         <Route
           path="/project/:projectId"
           element={
-            loading ? <LoadingScreen /> : user ? <ProjectView /> : <Navigate to="/login" replace />
+            loading ? <LoadingScreen /> : user ? <ProjectEditor /> : <Navigate to="/login" replace />
           }
         />
       </Route>

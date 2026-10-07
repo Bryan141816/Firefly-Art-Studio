@@ -1,4 +1,5 @@
 import InfiniteCanvas from "@/components/infinite-canvas";
+import { apiFetch } from "@/lib/api";
 import type Konva from "konva";
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
@@ -64,7 +65,7 @@ type ProjectResponse = {
   items: Record<string, CanvasImageData>;
 };
 
-export default function ProjectView() {
+export default function ProjectEditor() {
 
   const [images, setImages] = useState<Record<string, CanvasImageData>>({});
 
@@ -138,8 +139,8 @@ export default function ProjectView() {
     });
 
     try {
-      const response = await fetch(
-        `http://localhost:8080/api/project/${projectId}/item/`,
+      const response = await apiFetch(
+        `/project/${projectId}/item/`,
         {
           method: "POST",
           body: formData,
@@ -237,8 +238,8 @@ export default function ProjectView() {
     })
 
     try {
-      const response = await fetch(
-        `http://localhost:8080/api/project/item/`,
+      const response = await apiFetch(
+        `/project/item/`,
         {
           method: "PATCH",
           headers: {
@@ -253,7 +254,6 @@ export default function ProjectView() {
         throw new Error(`Update failed: ${response.status}`);
       }
 
-      console.log("Update successful");
     } catch (error) {
       console.error("Update failed:", error);
 
@@ -498,8 +498,8 @@ export default function ProjectView() {
   };
   const fetchData = async () => {
     try {
-      const response = await fetch(
-        `http://localhost:8080/api/project/${projectId}`,
+      const response = await apiFetch(
+        `/project/${projectId}`,
         {
           method: "GET",
           credentials: "include",
@@ -513,10 +513,6 @@ export default function ProjectView() {
       const data: ProjectResponse = await response.json();
 
       setImages(data.items);
-
-      console.log("fetch successful");
-      setImages(data.items);
-
     } catch (error) {
       console.error("fetch failed:", error);
     }
