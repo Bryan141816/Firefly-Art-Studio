@@ -3,18 +3,8 @@ import { apiFetch } from "@/lib/api";
 import type Konva from "konva";
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import type { Update } from "vite/types/hmrPayload.js";
+import type { CanvasImageData } from "@/types/CanvasObject";
 
-export type CanvasImageData = {
-  assetId?: string | null;
-  src: string;
-  x: number;
-  y: number;
-  width: number | null;
-  height: number | null;
-  rotation: number | 0;
-  active: boolean;
-};
 
 type CloudUploadData = {
   canvasId: string
@@ -66,28 +56,30 @@ type ProjectResponse = {
 };
 
 export default function ProjectEditor() {
-
+  const { projectId } = useParams<{ projectId: string }>();
+  
   const [images, setImages] = useState<Record<string, CanvasImageData>>({});
-
+  
   const containerRef = useRef<HTMLDivElement>(null);
-
+  
   const stageRef = useRef<Konva.Stage>(null);
-
+  
   const undoStack = useRef<DeltaSystem[]>([])
   const redoStack = useRef<DeltaSystem[]>([])
-
+  
+  const UPLOAD_TIME_DEBOUNCE_DURATION = 2000
   const uploadQueue = useRef<UploadQueueData[]>([]);
   const uploadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
+  
+  const UPDATE_TIME_DEBOUNCE_DURATION = 2000
   const updateQueue = useRef<UpdateDelta[]>([]);
   const updateTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
+  
+  
   const HISTORY_GROUP_TIME = 300;
-
   const historyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingHistory = useRef<DeltaSystem | null>(null);
 
-  const { projectId } = useParams<{ projectId: string }>();
 
   const addUploadQueue = (id: string, file: File, data: CanvasImageData) => {
     uploadQueue.current.push({
@@ -102,11 +94,12 @@ export default function ProjectEditor() {
 
     uploadTimer.current = setTimeout(() => {
       uploadFiles();
-    }, 2000);
+    }, UPLOAD_TIME_DEBOUNCE_DURATION);
   };
 
   const uploadFiles = async () => {
     const queue = uploadQueue.current;
+
     if (queue.length === 0 || !projectId) return;
 
     uploadQueue.current = [];
@@ -178,6 +171,7 @@ export default function ProjectEditor() {
           ...img,
           assetId: item.id,
         };
+    
         if (
           img.x !== item.x ||
           img.y !== item.y ||
@@ -220,7 +214,7 @@ export default function ProjectEditor() {
 
     updateTimer.current = setTimeout(() => {
       cloudObjectSync();
-    }, 2000);
+    }, UPDATE_TIME_DEBOUNCE_DURATION);
   }
 
   const cloudObjectSync = async () => {
@@ -386,6 +380,7 @@ export default function ProjectEditor() {
     position: Position
   ) => {
     const newImages: Record<string, CanvasImageData> = {};
+    
     imageFiles.forEach((file) => {
       const id = crypto.randomUUID();
       const createdImage: CanvasImageData = {
@@ -397,6 +392,7 @@ export default function ProjectEditor() {
         height: null,
         rotation: 0,
       }
+    
       newImages[id] = createdImage;
 
       const delta: Delta = {
@@ -404,6 +400,7 @@ export default function ProjectEditor() {
         oldData: null,
         newData: createdImage
       }
+    
       createHistory("create", delta);
       addUploadQueue(id, file, createdImage);
     });
@@ -450,9 +447,10 @@ export default function ProjectEditor() {
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
 
-
     const position = convertToWorldCoordinate({ x, y })
+    
     if (!position) return;
+    
     addImages(imageFiles, position);
   };
 
@@ -529,8 +527,6 @@ export default function ProjectEditor() {
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, []);
-
-
 
   return (
     <div

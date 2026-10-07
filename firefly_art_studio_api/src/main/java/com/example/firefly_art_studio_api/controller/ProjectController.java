@@ -17,10 +17,9 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.example.firefly_art_studio_api.dto.CanvasObject;
 import com.example.firefly_art_studio_api.dto.CreateProjectRequest;
+import com.example.firefly_art_studio_api.dto.ProjectListResponse;
 import com.example.firefly_art_studio_api.dto.ProjectResponse;
-import com.example.firefly_art_studio_api.dto.ProjectViewResponse;
 import com.example.firefly_art_studio_api.model.Project;
-import com.example.firefly_art_studio_api.model.ProjectItem;
 import com.example.firefly_art_studio_api.model.User;
 import com.example.firefly_art_studio_api.repository.ProjectRepository;
 import com.example.firefly_art_studio_api.repository.UserRepository;
@@ -37,7 +36,7 @@ public class ProjectController {
         }
 
         @GetMapping("/projects")
-        public List<ProjectResponse> getAll(Authentication authentication) {
+        public List<ProjectListResponse> getAll(Authentication authentication) {
                 OAuth2User oauthUser = (OAuth2User) authentication.getPrincipal();
 
                 String googleId = oauthUser.getAttribute("sub");
@@ -47,7 +46,7 @@ public class ProjectController {
 
                 return projectRepository.findByUser(user)
                                 .stream()
-                                .map(project -> new ProjectResponse(
+                                .map(project -> new ProjectListResponse(
                                                 project.getId(),
                                                 project.getName(),
                                                 project.getUntitledNo(),
@@ -56,7 +55,7 @@ public class ProjectController {
         }
 
         @PostMapping("/project")
-        public ProjectResponse create(
+        public ProjectListResponse create(
                         @RequestBody CreateProjectRequest request,
                         Authentication authentication) {
                 OAuth2User oauthUser = (OAuth2User) authentication.getPrincipal();
@@ -77,7 +76,7 @@ public class ProjectController {
 
                 Project savedProject = projectRepository.save(project);
 
-                return new ProjectResponse(
+                return new ProjectListResponse(
                                 savedProject.getId(),
                                 savedProject.getName(),
                                 savedProject.getUntitledNo(),
@@ -85,7 +84,7 @@ public class ProjectController {
         }
 
         @GetMapping("/project/{id}")
-        public ProjectViewResponse getProject(
+        public ProjectResponse getProject(
                         @PathVariable UUID id,
                         Authentication authentication) {
                 OAuth2User oauthUser = (OAuth2User) authentication.getPrincipal();
@@ -102,7 +101,7 @@ public class ProjectController {
                         throw new RuntimeException("You do not own this project");
                 }
 
-                ProjectResponse metadata = new ProjectResponse(
+                ProjectListResponse metadata = new ProjectListResponse(
                                 project.getId(),
                                 project.getName(),
                                 project.getUntitledNo(),
@@ -122,7 +121,7 @@ public class ProjectController {
                                                                 item.getRotation(),
                                                                 item.getActive())));
 
-                return new ProjectViewResponse(metadata, items);
+                return new ProjectResponse(metadata, items);
         }
 
         @DeleteMapping("/project/{id}")
