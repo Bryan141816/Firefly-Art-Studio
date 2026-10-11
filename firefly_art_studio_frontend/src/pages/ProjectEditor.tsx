@@ -544,17 +544,20 @@ export default function ProjectEditor() {
   }, []);
 
   return (
-    <div
-      className="w-full h-full overflow-hidden"
-      onDragOver={handleDragOver}
-      onDrop={handleDrop}
-      ref={containerRef}
-    >
-      <InfiniteCanvas
-        stageRef={stageRef}
-        images={images}
-        updateCanvasObj={updateObjData}
-      />
+    <div className="flex h-screen w-full">
+      <div
+        className="w-full h-full overflow-hidden"
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
+        ref={containerRef}
+      >
+        <InfiniteCanvas
+          stageRef={stageRef}
+          images={images}
+          imagesRef={imageRef}
+          updateCanvasObj={updateObjData}
+        />
+      </div>
     </div>
   );
 }

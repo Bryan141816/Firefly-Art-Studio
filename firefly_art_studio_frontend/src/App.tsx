@@ -63,7 +63,12 @@ function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
-
+      <Route
+        path="/project/:projectId"
+        element={
+          loading ? <LoadingScreen /> : user ? <ProjectEditor /> : <Navigate to="/login" replace />
+        }
+      />
       <Route
         element={
           <AppLayout user={user} />
@@ -83,12 +88,7 @@ function App() {
           }
         />
 
-        <Route
-          path="/project/:projectId"
-          element={
-            loading ? <LoadingScreen /> : user ? <ProjectEditor /> : <Navigate to="/login" replace />
-          }
-        />
+
       </Route>
     </Routes>
   )
